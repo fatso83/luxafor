@@ -1,75 +1,79 @@
-'use strict';
+"use strict";
 
-const HID = require('node-hid');
-const hex2rgb = require('hex-rgb');
-const constants = require('./constants');
-const os = require('os');
+const debug = require("debug")("luxafor-api");
+const HID = require("node-hid");
+const hex2rgb = require("hex-rgb");
+const constants = require("./constants");
+const os = require("os");
 
-const COMMAND_SETCOLOR = 'COMMAND_SETCOLOR';
-const COMMAND_FADETO = 'COMMAND_FADETO';
-const COMMAND_FLASH = 'COMMAND_FLASH';
-const COMMAND_WAVE = 'COMMAND_WAVE';
+const COMMAND_SETCOLOR = "COMMAND_SETCOLOR";
+const COMMAND_FADETO = "COMMAND_FADETO";
+const COMMAND_FLASH = "COMMAND_FLASH";
+const COMMAND_WAVE = "COMMAND_WAVE";
 
 function Luxafor(opts) {
-
     this.device = null;
 
     // default options
-    this.opts = Object.assign({
-        // device id
-        pid: 0xf372,
-        vid: 0x04d8,
+    this.opts = Object.assign(
+        {
+            // device id
+            pid: 0xf372,
+            vid: 0x04d8,
 
-        // default settings
-        defaults: {
-            setColor: {
-                target: 0xFF
-            },
-            fadeTo: {
-                target: 0xFF,
-                speed: 20
-            },
-            flash: {
-                target: 0xFF,
-                speed: 180,
-                repeat: 5
-            },
-            wave: {
-                type: 2,
-                speed: 90,
-                repeat: 5
+            // default settings
+            defaults: {
+                setColor: {
+                    target: 0xff
+                },
+                fadeTo: {
+                    target: 0xff,
+                    speed: 20
+                },
+                flash: {
+                    target: 0xff,
+                    speed: 180,
+                    repeat: 5
+                },
+                wave: {
+                    type: 2,
+                    speed: 90,
+                    repeat: 5
+                }
             }
-        }
-    }, opts);
+        },
+        opts
+    );
 
-    // trying to initialize our device
+    debug("trying to initialize our device");
     try {
         this.device = new HID.HID(this.opts.vid, this.opts.pid);
-        // pause until next command
+
+        debug("pause until next command");
         this.device.pause();
-    }
-    catch (e) {
-        this.device = new Error(e);
+    } catch (e) {
+        e.message = "Failed to initialize Luxafor. " + e.message;
+        debug(e.message);
+        throw e;
     }
 
     /**
      * Write data to hid device
      * @param data
      */
-    this.write = function (data) {
+    this.write = function(data) {
         if (this.device instanceof Error || this.device === null) {
-            return new Error('Device is not connected.')
+            throw new Error("Device is not connected.");
         }
         try {
             this.device.resume();
-            if (os.platform() === 'win32') {
-              data.unshift(0);
+            if (os.platform() === "win32") {
+                data.unshift(0);
             }
             this.device.write(data);
             this.device.pause();
-        }
-        catch (e) {
-            return new Error(e)
+        } catch (e) {
+            throw new Error("Failed writing to device", e);
         }
         // if everything went fine, returning true
         return true;
@@ -80,7 +84,7 @@ function Luxafor(opts) {
      *
      * @param color hex color in the format of #ffffff
      */
-    this.parseColor = function (color) {
+    this.parseColor = function(color) {
         return hex2rgb(color);
     };
 
@@ -90,24 +94,28 @@ function Luxafor(opts) {
      * @param color
      * @param options
      */
-    this.issueCommand = function (command, target, color, options) {
+    this.issueCommand = function(command, target, color, options) {
         // if there are no options, treat is as an empty array
-        options = typeof options !== 'undefined' ? options : [];
+        options = typeof options !== "undefined" ? options : [];
 
         // converting hex to rgb array
         const rgb = this.parseColor(color);
 
         // writing data
-        return this.write([this.getCommand(command), target, rgb[0], rgb[1], rgb[2]].concat(options));
-    }
+        return this.write(
+            [this.getCommand(command), target, rgb[0], rgb[1], rgb[2]].concat(
+                options
+            )
+        );
+    };
 
     /**
      * Get command constant by name
      * @param command
      */
-    this.getCommand = function (command) {
+    this.getCommand = function(command) {
         return constants.commands[command];
-    }
+    };
 }
 
 /**
@@ -116,9 +124,12 @@ function Luxafor(opts) {
  * @param color hex color
  * @param target target led
  */
-Luxafor.prototype.setColor = function (color, target) {
+Luxafor.prototype.setColor = function(color, target) {
     // if target is not defined, we assume that we want to change the color of all leds
-    target = typeof target !== 'undefined' ? target : this.opts.defaults.setColor.target;
+    target =
+        typeof target !== "undefined"
+            ? target
+            : this.opts.defaults.setColor.target;
 
     return this.issueCommand(COMMAND_SETCOLOR, target, color);
 };
@@ -129,12 +140,16 @@ Luxafor.prototype.setColor = function (color, target) {
  * @param target
  * @param speed  integer value from 0 to 255, 0 is the quickest, 255 is the slowest
  */
-Luxafor.prototype.fadeTo = function (color, target, speed) {
+Luxafor.prototype.fadeTo = function(color, target, speed) {
     // if target is not defined, we assume that we want to change the color of all leds
-    target = typeof target !== 'undefined' ? target : this.opts.defaults.fadeTo.target;
+    target =
+        typeof target !== "undefined"
+            ? target
+            : this.opts.defaults.fadeTo.target;
 
     // specify default speed if not provided
-    speed = typeof speed !== 'undefined' ? speed : this.opts.defaults.fadeTo.speed;
+    speed =
+        typeof speed !== "undefined" ? speed : this.opts.defaults.fadeTo.speed;
 
     return this.issueCommand(COMMAND_FADETO, target, color, [speed]);
 };
@@ -147,15 +162,22 @@ Luxafor.prototype.fadeTo = function (color, target, speed) {
  * @param speed
  * @param repeat
  */
-Luxafor.prototype.flash = function (color, target, speed, repeat) {
+Luxafor.prototype.flash = function(color, target, speed, repeat) {
     // if target is not defined, we assume that we want to change the color of all leds
-    target = typeof target !== 'undefined' ? target : this.opts.defaults.flash.target;
+    target =
+        typeof target !== "undefined"
+            ? target
+            : this.opts.defaults.flash.target;
 
     // specify default speed if not provided
-    speed = typeof speed !== 'undefined' ? speed : this.opts.defaults.flash.speed;
+    speed =
+        typeof speed !== "undefined" ? speed : this.opts.defaults.flash.speed;
 
     // specify default speed if not provided
-    repeat = typeof repeat !== 'undefined' ? repeat : this.opts.defaults.flash.repeat;
+    repeat =
+        typeof repeat !== "undefined"
+            ? repeat
+            : this.opts.defaults.flash.repeat;
 
     return this.issueCommand(COMMAND_FLASH, target, color, [speed, 0, repeat]);
 };
@@ -167,15 +189,17 @@ Luxafor.prototype.flash = function (color, target, speed, repeat) {
  * @param speed
  * @param repeat
  */
-Luxafor.prototype.wave = function (color, type, speed, repeat) {
+Luxafor.prototype.wave = function(color, type, speed, repeat) {
     // defining default wave type if not specified
-    type = typeof type !== 'undefined' ? type : this.opts.defaults.wave.type;
+    type = typeof type !== "undefined" ? type : this.opts.defaults.wave.type;
 
     // specify default speed if not provided
-    speed = typeof speed !== 'undefined' ? speed : this.opts.defaults.wave.speed;
+    speed =
+        typeof speed !== "undefined" ? speed : this.opts.defaults.wave.speed;
 
     // specify default speed if not provided
-    repeat = typeof repeat !== 'undefined' ? repeat : this.opts.defaults.wave.repeat;
+    repeat =
+        typeof repeat !== "undefined" ? repeat : this.opts.defaults.wave.repeat;
 
     return this.issueCommand(COMMAND_WAVE, type, color, [0, repeat, speed]);
 };
@@ -183,8 +207,8 @@ Luxafor.prototype.wave = function (color, type, speed, repeat) {
 /**
  * Turn off all the leds
  */
-Luxafor.prototype.off = function () {
-    return this.setColor('#000');
+Luxafor.prototype.off = function() {
+    return this.setColor("#000");
 };
 
 /**
@@ -192,7 +216,7 @@ Luxafor.prototype.off = function () {
  *
  * @returns {*}
  */
-Luxafor.prototype.getTargets = function () {
+Luxafor.prototype.getTargets = function() {
     return constants.targets;
 };
 
@@ -201,7 +225,7 @@ Luxafor.prototype.getTargets = function () {
  *
  * @returns {*}
  */
-Luxafor.prototype.getWaveTypes = function () {
+Luxafor.prototype.getWaveTypes = function() {
     return constants.waveTypes;
 };
 
